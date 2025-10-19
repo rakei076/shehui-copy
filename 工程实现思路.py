@@ -204,7 +204,7 @@ from google import genai
 import config
 
 class NPCCharacter:
-    """NPC角色类"""
+    """NPC角色类（带记忆功能）"""
     
     def __init__(self, name, prompt_file):
         """
@@ -220,11 +220,19 @@ class NPCCharacter:
         # 创建AI客户端
         self.client = genai.Client(api_key=config.GEMINI_API_KEY)
         
-        # 加载首次提示词
-        self.first_prompt = self.load_first_prompt()
+        # 加载首次提示词作为系统指令
+        system_instruction = self.load_first_prompt()
         
-        # 是否已经初始化（用于判断是否需要发送首次提示词）
-        self.initialized = False
+        # 创建持续对话会话（AI会记住所有历史对话）
+        self.chat = self.client.chats.create(
+            model=config.MODEL_NAME,
+            config={
+                "system_instruction": system_instruction  # 角色设定
+            }
+        )
+        
+        # 注意：使用chat模式后，不再需要initialized标记
+        # AI会自动记住整个对话历史
     
     def load_first_prompt(self):
         """
@@ -283,7 +291,7 @@ class NPCCharacter:
     
     def act(self, time, scene, messages):
         """
-        NPC思考并行动
+        NPC思考并行动（使用记忆模式）
         
         参数:
             time: 当前时间
@@ -293,19 +301,12 @@ class NPCCharacter:
         返回:
             解析后的输出字典
         """
-        # 如果是第一次，发送首次提示词
-        if not self.initialized:
-            prompt = self.first_prompt + "\n\n" + self.build_prompt(time, scene, messages)
-            self.initialized = True
-        else:
-            prompt = self.build_prompt(time, scene, messages)
+        # 构建当前轮的提示词
+        prompt = self.build_prompt(time, scene, messages)
         
         try:
-            # 调用AI
-            response = self.client.models.generate_content(
-                model=config.MODEL_NAME,
-                contents=prompt
-            )
+            # 发送消息到对话会话（AI会记住之前所有对话）
+            response = self.chat.send_message(prompt)
             
             # 解析输出
             return self.parse_output(response.text, time, scene)
@@ -377,7 +378,7 @@ class NPCCharacter:
 """
 
 class AgentSystem:
-    """智能体系统"""
+    """智能体系统（带记忆功能）"""
     
     def __init__(self, resource_manager):
         """
@@ -388,8 +389,19 @@ class AgentSystem:
         """
         self.resource_manager = resource_manager
         self.client = genai.Client(api_key=config.GEMINI_API_KEY)
-        self.first_prompt = self.load_first_prompt()
-        self.initialized = False
+        
+        # 加载系统指令
+        system_instruction = self.load_first_prompt()
+        
+        # 创建持续对话会话（智能体会记住所有审核历史）
+        self.chat = self.client.chats.create(
+            model=config.MODEL_NAME,
+            config={
+                "system_instruction": system_instruction  # 智能体角色设定
+            }
+        )
+        
+        # 使用chat模式后，不再需要initialized标记
     
     def load_first_prompt(self):
         """加载智能体首次提示词"""
@@ -404,28 +416,6 @@ class AgentSystem:
         except Exception as e:
             print(f"警告：加载智能体提示词失败: {e}")
             return ""
-    
-    def detect_conflict(self, npc_output):
-        """
-        检测是否存在资源冲突
-        
-        参数:
-            npc_output: NPC的输出
-            
-        返回:
-            True: 有冲突, False: 无冲突
-        """
-        # 从想法中提取可能使用的资源
-        thought = npc_output.get("想法", "")
-        
-        # 简单的关键词匹配
-        if "洗澡" in thought or "厕所" in thought or "洗漱" in thought:
-            return not self.resource_manager.is_available("厕所", npc_output["角色"])
-        
-        if "做饭" in thought or "厨房" in thought or "煮" in thought:
-            return not self.resource_manager.is_available("厨房", npc_output["角色"])
-        
-        return False
     
     def build_prompt(self, npc_output, time, scene):
         """
@@ -464,7 +454,15 @@ class AgentSystem:
     
     def review(self, npc_output, time, scene):
         """
-        审核NPC行为
+        审核NPC行为（使用记忆模式）
+        
+        完全由AI自主判断，不做任何预判或干预
+        AI会：
+        1. 查看NPC的想法和对话
+        2. 检查当前资源状态
+        3. 自主判断是否存在冲突
+        4. 决定是否需要干预或转发对话
+        5. 记住所有审核历史，做出更连贯的决策
         
         参数:
             npc_output: NPC输出
@@ -474,22 +472,12 @@ class AgentSystem:
         返回:
             审核结果字典
         """
-        # 检测冲突
-        has_conflict = self.detect_conflict(npc_output)
-        
-        # 构建提示词
-        if not self.initialized:
-            prompt = self.first_prompt + "\n\n" + self.build_prompt(npc_output, time, scene)
-            self.initialized = True
-        else:
-            prompt = self.build_prompt(npc_output, time, scene)
+        # 构建提示词（包含资源状态和NPC输出）
+        prompt = self.build_prompt(npc_output, time, scene)
         
         try:
-            # 调用AI
-            response = self.client.models.generate_content(
-                model=config.MODEL_NAME,
-                contents=prompt
-            )
+            # 发送消息到对话会话（智能体会记住之前所有审核）
+            response = self.chat.send_message(prompt)
             
             # 解析输出
             return self.parse_output(response.text, npc_output)
@@ -762,6 +750,115 @@ if __name__ == "__main__":
    - 打印日志观察流程
    - 逐步测试每个模块
    - 简化场景定位问题
+
+6. 核心设计理念:
+   - AI完全自主判断，不做任何硬编码干预
+   - 智能体通过提示词中的资源状态自主决策
+   - 不用关键词匹配，让AI理解语义
+   - 保持系统的灵活性和智能性
+
+==========================================
+关键设计决策说明
+==========================================
+
+【为什么不做预判？】
+在 AgentSystem 中，我们移除了 detect_conflict() 函数，
+原因：
+- ❌ 关键词匹配太死板，无法理解复杂语义
+- ❌ 需要维护大量关键词列表
+- ❌ 限制了AI的智能判断能力
+
+【AI自主判断的优势】
+✅ 智能理解："想去洗个澡" = "想洗澡" = "准备洗漱"
+✅ 灵活决策：根据上下文自主判断是否需要干预
+✅ 无需维护：不需要添加新规则和关键词
+✅ 更真实：像真实的管理者一样做判断
+
+【实现方式】
+智能体AI通过提示词接收：
+1. 当前所有资源的使用状态
+2. NPC的想法和对话
+3. 当前时间和场景
+
+然后自主决定：
+- 是否存在资源冲突
+- 是否需要给出建议
+- 是否需要转发对话
+
+这就是"AI驱动的社会模拟"的核心理念！
+
+==========================================
+记忆系统说明
+==========================================
+
+【使用Gemini的Chat模式（推荐）】
+
+旧方式（无记忆）：
+```python
+# 每次都是独立调用
+response = client.models.generate_content(
+    model="gemini-2.0-flash-exp",
+    contents=prompt
+)
+# 问题：AI不记得之前的对话
+```
+
+新方式（有记忆）：
+```python
+# 创建持续对话会话
+chat = client.chats.create(
+    model="gemini-2.0-flash-exp",
+    config={
+        "system_instruction": "你是小明，程序员..."
+    }
+)
+
+# 发送消息（AI会记住所有历史）
+response = chat.send_message("现在是早上7:00...")
+```
+
+【记忆的好处】
+
+1. NPC行为更连贯
+   - 记得自己说过要去洗澡
+   - 记得和谁约了吃饭
+   - 记得之前的对话内容
+
+2. 智能体决策更准确
+   - 记得之前处理过的冲突
+   - 记得谁在使用什么资源
+   - 可以追踪长期的行为模式
+
+3. 涌现更真实的互动
+   - NPC之间的关系会演化
+   - 可以产生长期的故事线
+   - 行为模式更像真人
+
+【实现对比】
+
+场景：小明想洗澡，但厕所被占用
+
+无记忆模式：
+- 第1次：AI说"想去洗澡"
+- 智能体说："厕所被占用，请等待"
+- 第2次：AI可能又说"想去洗澡"（忘记了刚才的事）
+
+有记忆模式：
+- 第1次：AI说"想去洗澡"
+- 智能体说："厕所被占用，请等待"
+- 第2次：AI说"好的，那我先看会书等一下"（记得刚才被告知要等）
+- 第3次：AI主动问"厕所现在空了吗？"（记得之前想洗澡）
+
+【技术细节】
+
+system_instruction vs 普通prompt：
+- system_instruction: 角色设定，始终生效
+- 普通prompt: 当前轮的具体情况
+
+对话历史自动管理：
+- Gemini会自动维护对话历史
+- 不需要手动管理历史记录
+- 每次调用send_message()都会累积记忆
 
 ==========================================
 """

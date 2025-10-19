@@ -1,18 +1,192 @@
-from google import genai
-from google.genai import types
+"""
+作用：程序的启动入口
+功能：
+1. 初始化游戏循环
+2. 启动模拟
+3. 处理异常
+"""
+from game_loop import GameLoop
+def main():
+    """主函数"""
+    print("="*60)
+    print("    合租生活模拟器")
+    print("="*60)
+    print()
+    try:
+        # 创建游戏循环
+        game = GameLoop()
+        
+        # 运行5个时间步
+        game.run(num_ticks=5)
+        
+    except KeyboardInterrupt:
+        print("\n\n模拟已停止")
+    except Exception as e:
+        print(f"\n\n错误: {e}")
+        import traceback
+        traceback.print_exc()
+    print("\n模拟结束")
 
+if __name__ == "__main__":
+    main()
 
-client = genai.Client(
-    api_key="AIzaSyCn5ubu9I3LxuAksQBOzhv3ztuohKVrb1Q"
+"""
+==========================================
+使用说明
+==========================================
+
+1. 安装依赖:
+   pip install google-genai
+
+2. 配置API密钥:
+   在config.py中设置你的GEMINI_API_KEY
+
+3. 准备提示词文件:
+   确保以下文件存在：
+   - 小明-程序员-提示词.txt
+   - 小庄-设计师-提示词.txt
+   - 小张-厨师-提示词.txt
+   - 小李-学生-提示词.txt
+   - 智能体-系统提示词.txt
+
+4. 运行程序:
+   python app.py
+
+==========================================
+学习要点
+==========================================
+
+1. 类的设计:
+   - ResourceManager: 管理状态
+   - NPCCharacter: 封装AI调用
+   - AgentSystem: 审核协调
+   - GameLoop: 调度控制
+
+2. 数据流转:
+   NPC → 智能体 → 处理结果 → 更新状态
+
+3. 提示词管理:
+   - 首次提示词: 建立认知
+   - 后续提示词: 快速交互
+
+4. 错误处理:
+   - try-except捕获异常
+   - 返回默认值保证继续运行
+
+5. 调试技巧:
+   - 打印日志观察流程
+   - 逐步测试每个模块
+   - 简化场景定位问题
+
+6. 核心设计理念:
+   - AI完全自主判断，不做任何硬编码干预
+   - 智能体通过提示词中的资源状态自主决策
+   - 不用关键词匹配，让AI理解语义
+   - 保持系统的灵活性和智能性
+
+==========================================
+关键设计决策说明
+==========================================
+
+【为什么不做预判？】
+在 AgentSystem 中，我们移除了 detect_conflict() 函数，
+原因：
+- ❌ 关键词匹配太死板，无法理解复杂语义
+- ❌ 需要维护大量关键词列表
+- ❌ 限制了AI的智能判断能力
+
+【AI自主判断的优势】
+✅ 智能理解："想去洗个澡" = "想洗澡" = "准备洗漱"
+✅ 灵活决策：根据上下文自主判断是否需要干预
+✅ 无需维护：不需要添加新规则和关键词
+✅ 更真实：像真实的管理者一样做判断
+
+【实现方式】
+智能体AI通过提示词接收：
+1. 当前所有资源的使用状态
+2. NPC的想法和对话
+3. 当前时间和场景
+
+然后自主决定：
+- 是否存在资源冲突
+- 是否需要给出建议
+- 是否需要转发对话
+
+这就是"AI驱动的社会模拟"的核心理念！
+
+==========================================
+记忆系统说明
+==========================================
+
+【使用Gemini的Chat模式（推荐）】
+
+旧方式（无记忆）：
+```python
+# 每次都是独立调用
+response = client.models.generate_content(
+    model="gemini-2.0-flash-exp",
+    contents=prompt
+)
+# 问题：AI不记得之前的对话
+```
+
+新方式（有记忆）：
+```python
+# 创建持续对话会话
+chat = client.chats.create(
+    model="gemini-2.0-flash-exp",
+    config={
+        "system_instruction": "你是小明，程序员..."
+    }
 )
 
-response =client.models.generate_content(
-    model="gemini-2.5-flash",
-    config=types.GenerateContentConfig(
-        system_instruction="{system_instruction}"),
+# 发送消息（AI会记住所有历史）
+response = chat.send_message("现在是早上7:00...")
+```
 
-        contents="{contents}"
-    
-)
-print(response.text)
+【记忆的好处】
+
+1. NPC行为更连贯
+   - 记得自己说过要去洗澡
+   - 记得和谁约了吃饭
+   - 记得之前的对话内容
+
+2. 智能体决策更准确
+   - 记得之前处理过的冲突
+   - 记得谁在使用什么资源
+   - 可以追踪长期的行为模式
+
+3. 涌现更真实的互动
+   - NPC之间的关系会演化
+   - 可以产生长期的故事线
+   - 行为模式更像真人
+
+【实现对比】
+
+场景：小明想洗澡，但厕所被占用
+
+无记忆模式：
+- 第1次：AI说"想去洗澡"
+- 智能体说："厕所被占用，请等待"
+- 第2次：AI可能又说"想去洗澡"（忘记了刚才的事）
+
+有记忆模式：
+- 第1次：AI说"想去洗澡"
+- 智能体说："厕所被占用，请等待"
+- 第2次：AI说"好的，那我先看会书等一下"（记得刚才被告知要等）
+- 第3次：AI主动问"厕所现在空了吗？"（记得之前想洗澡）
+
+【技术细节】
+
+system_instruction vs 普通prompt：
+- system_instruction: 角色设定，始终生效
+- 普通prompt: 当前轮的具体情况
+
+对话历史自动管理：
+- Gemini会自动维护对话历史
+- 不需要手动管理历史记录
+- 每次调用send_message()都会累积记忆
+
+==========================================
+"""
 
