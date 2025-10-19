@@ -1,0 +1,5 @@
+# Google Generative AI SDK (新版本)
+google-genai>=1.45.0
+
+# 其他可能需要的依赖
+requests>=2.28.0
