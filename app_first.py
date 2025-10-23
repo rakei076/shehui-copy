@@ -43,3 +43,4 @@ with open("chat_history.json", "w", encoding="utf-8") as f:
 print("\n✅ 对话历史已保存到 chat_history.json")
 print("现在可以运行 app_second.py 继续对话")
 
+

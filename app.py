@@ -16,8 +16,11 @@ def main():
         # 创建游戏循环
         game = GameLoop()
         
-        # 运行5个时间步
-        game.run(num_ticks=5)
+        # 运行更多时间步（可根据需要调整）
+        # 5 ticks = 1小时15分钟（7:00-8:15）
+        # 10 ticks = 2小时30分钟（7:00-9:30）
+        # 20 ticks = 5小时（7:00-12:00）
+        game.run(num_ticks=20)  # 模拟到中午12点
         
     except KeyboardInterrupt:
         print("\n\n模拟已停止")

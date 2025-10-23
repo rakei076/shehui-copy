@@ -36,6 +36,7 @@ class AgentSystem:
             config={
                 "system_instruction": system_instruction  # 智能体角色设定
             }
+            
         )
         
         # 使用chat模式后，不再需要initialized标记
@@ -119,6 +120,11 @@ class AgentSystem:
     def parse_output(self, text, npc_output):
         """
         解析智能体输出
+        
+        格式要求：使用 {} 包裹内容
+        1-{角色}对我说{内容}
+        2-审核智能体说{内容}
+        
         参数:
             text: AI返回的文本
             npc_output: NPC输出
@@ -132,16 +138,22 @@ class AgentSystem:
             "对话目标": None,
             "智能体建议": None
         }
+        
         # 提取判断结果
         if "需要干预" in text:
             result["判断结果"] = "需要干预"
-        # 提取转发对话
-        dialog_match = re.search(r'1-[「『](.+?)[」』]对我说[「『](.+?)[」』]', text)
+        
+        # 提取转发对话 - 使用 {} 包裹
+        # 格式：1-{角色}对我说{内容}
+        dialog_match = re.search(r'1-\{(.+?)\}对我说\{(.+?)\}', text, re.DOTALL)
         if dialog_match:
+            # 如果智能体要转发对话，使用NPC原本的对话信息
             result["对话目标"] = npc_output.get("对话目标")
             result["转发对话"] = npc_output.get("对话内容")
-        # 提取智能体建议
-        advice_match = re.search(r'2-审核智能体说[「『](.+?)[」』]', text)
+        
+        # 提取智能体建议 - 使用 {} 包裹
+        advice_match = re.search(r'2-审核智能体说\{(.+?)\}', text, re.DOTALL)
         if advice_match:
-            result["智能体建议"] = advice_match.group(1)
+            result["智能体建议"] = advice_match.group(1).strip()
+        
         return result
